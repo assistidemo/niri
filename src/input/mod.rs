@@ -2,11 +2,12 @@ use std::any::Any;
 use std::cmp::min;
 use std::collections::hash_map::Entry;
 use std::collections::HashSet;
+use std::ops::Deref;
 use std::time::Duration;
 
 use calloop::timer::{TimeoutAction, Timer};
 use input::event::gesture::GestureEventCoordinates as _;
-use niri_config::{Action, Bind, Binds, Key, Modifiers, SwitchBinds, Trigger};
+use niri_config::{Action, Bind, Binds, Key, Modifiers, Submap, SwitchBinds, Trigger};
 use niri_ipc::LayoutSwitchTarget;
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, AxisSource, ButtonState, Device, DeviceCapability, Event,
@@ -396,9 +397,11 @@ impl State {
                 }
 
                 let bindings = &this.niri.config.borrow().binds;
+                let submap_state = &this.niri.submap_state;
                 should_intercept_key(
                     &mut this.niri.suppressed_keys,
                     bindings,
+                    submap_state,
                     comp_mod,
                     key_code,
                     modified,
@@ -1588,6 +1591,9 @@ impl State {
                     self.niri.queue_redraw_all();
                 }
             }
+            Action::SubmapSet(submap) => {
+                self.niri.set_submap(submap);
+            }
             Action::MoveWorkspaceToMonitorLeft => {
                 if let Some(output) = self.niri.output_left() {
                     self.niri.layout.move_workspace_to_output(&output);
@@ -2081,7 +2087,8 @@ impl State {
                 .and_then(|trigger| {
                     let config = self.niri.config.borrow();
                     let bindings = &config.binds;
-                    find_configured_bind(bindings, comp_mod, trigger, mods)
+                    let submap_state = &self.niri.submap_state;
+                    find_configured_bind(bindings, submap_state, comp_mod, trigger, mods)
                 }) {
                     self.niri.suppressed_buttons.insert(button_code);
                     self.handle_bind(bind.clone());
@@ -2316,10 +2323,21 @@ impl State {
                 if ticks != 0 {
                     let config = self.niri.config.borrow();
                     let bindings = &config.binds;
-                    let bind_left =
-                        find_configured_bind(bindings, comp_mod, Trigger::WheelScrollLeft, mods);
-                    let bind_right =
-                        find_configured_bind(bindings, comp_mod, Trigger::WheelScrollRight, mods);
+                    let submap_state = &self.niri.submap_state;
+                    let bind_left = find_configured_bind(
+                        bindings,
+                        submap_state,
+                        comp_mod,
+                        Trigger::WheelScrollLeft,
+                        mods,
+                    );
+                    let bind_right = find_configured_bind(
+                        bindings,
+                        submap_state,
+                        comp_mod,
+                        Trigger::WheelScrollRight,
+                        mods,
+                    );
                     drop(config);
 
                     if let Some(right) = bind_right {
@@ -2339,10 +2357,21 @@ impl State {
                 if ticks != 0 {
                     let config = self.niri.config.borrow();
                     let bindings = &config.binds;
-                    let bind_up =
-                        find_configured_bind(bindings, comp_mod, Trigger::WheelScrollUp, mods);
-                    let bind_down =
-                        find_configured_bind(bindings, comp_mod, Trigger::WheelScrollDown, mods);
+                    let submap_state = &self.niri.submap_state;
+                    let bind_up = find_configured_bind(
+                        bindings,
+                        submap_state,
+                        comp_mod,
+                        Trigger::WheelScrollUp,
+                        mods,
+                    );
+                    let bind_down = find_configured_bind(
+                        bindings,
+                        submap_state,
+                        comp_mod,
+                        Trigger::WheelScrollDown,
+                        mods,
+                    );
                     drop(config);
 
                     if let Some(down) = bind_down {
@@ -2382,10 +2411,17 @@ impl State {
                 if ticks != 0 {
                     let config = self.niri.config.borrow();
                     let bindings = &config.binds;
-                    let bind_left =
-                        find_configured_bind(bindings, comp_mod, Trigger::TouchpadScrollLeft, mods);
+                    let submap_state = &self.niri.submap_state;
+                    let bind_left = find_configured_bind(
+                        bindings,
+                        submap_state,
+                        comp_mod,
+                        Trigger::TouchpadScrollLeft,
+                        mods,
+                    );
                     let bind_right = find_configured_bind(
                         bindings,
+                        submap_state,
                         comp_mod,
                         Trigger::TouchpadScrollRight,
                         mods,
@@ -2412,10 +2448,21 @@ impl State {
                 if ticks != 0 {
                     let config = self.niri.config.borrow();
                     let bindings = &config.binds;
-                    let bind_up =
-                        find_configured_bind(bindings, comp_mod, Trigger::TouchpadScrollUp, mods);
-                    let bind_down =
-                        find_configured_bind(bindings, comp_mod, Trigger::TouchpadScrollDown, mods);
+                    let submap_state = &self.niri.submap_state;
+                    let bind_up = find_configured_bind(
+                        bindings,
+                        submap_state,
+                        comp_mod,
+                        Trigger::TouchpadScrollUp,
+                        mods,
+                    );
+                    let bind_down = find_configured_bind(
+                        bindings,
+                        submap_state,
+                        comp_mod,
+                        Trigger::TouchpadScrollDown,
+                        mods,
+                    );
                     drop(config);
 
                     if let Some(down) = bind_down {
@@ -3069,6 +3116,7 @@ impl State {
 fn should_intercept_key(
     suppressed_keys: &mut HashSet<Keycode>,
     bindings: &Binds,
+    submap_state: &Submap,
     comp_mod: CompositorMod,
     key_code: Keycode,
     modified: Keysym,
@@ -3087,6 +3135,7 @@ fn should_intercept_key(
     }
 
     let mut final_bind = find_bind(
+        submap_state,
         bindings,
         comp_mod,
         modified,
@@ -3151,6 +3200,7 @@ fn should_intercept_key(
 }
 
 fn find_bind(
+    submap_state: &Submap,
     bindings: &Binds,
     comp_mod: CompositorMod,
     modified: Keysym,
@@ -3193,11 +3243,12 @@ fn find_bind(
     }
 
     let trigger = Trigger::Keysym(raw?);
-    find_configured_bind(bindings, comp_mod, trigger, mods)
+    find_configured_bind(bindings, submap_state, comp_mod, trigger, mods)
 }
 
 fn find_configured_bind(
     bindings: &Binds,
+    submap_state: &Submap,
     comp_mod: CompositorMod,
     trigger: Trigger,
     mods: ModifiersState,
@@ -3213,7 +3264,12 @@ fn find_configured_bind(
         modifiers |= Modifiers::COMPOSITOR;
     }
 
-    for bind in &bindings.0 {
+    for bind in bindings
+        .0
+        .get(submap_state)
+        .map(Deref::deref)
+        .unwrap_or(&[])
+    {
         if bind.key.trigger != trigger {
             continue;
         }
@@ -3612,7 +3668,12 @@ pub fn mods_with_binds(
     };
 
     let mut rv = HashSet::new();
-    for bind in &binds.0 {
+    for bind in binds
+        .0
+        .get(&Submap::Default)
+        .map(Deref::deref)
+        .unwrap_or(&[])
+    {
         if !triggers.iter().any(|trigger| bind.key.trigger == *trigger) {
             continue;
         }
@@ -3672,6 +3733,7 @@ pub fn mods_with_finger_scroll_binds(comp_mod: CompositorMod, binds: &Binds) -> 
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
+    use std::collections::HashMap;
 
     use super::*;
     use crate::animation::Clock;
@@ -3679,18 +3741,21 @@ mod tests {
     #[test]
     fn bindings_suppress_keys() {
         let close_keysym = Keysym::q;
-        let bindings = Binds(vec![Bind {
-            key: Key {
-                trigger: Trigger::Keysym(close_keysym),
-                modifiers: Modifiers::COMPOSITOR | Modifiers::CTRL,
-            },
-            action: Action::CloseWindow,
-            repeat: true,
-            cooldown: None,
-            allow_when_locked: false,
-            allow_inhibiting: true,
-            hotkey_overlay_title: None,
-        }]);
+        let bindings = Binds(HashMap::from([(
+            Submap::Default,
+            vec![Bind {
+                key: Key {
+                    trigger: Trigger::Keysym(close_keysym),
+                    modifiers: Modifiers::COMPOSITOR | Modifiers::CTRL,
+                },
+                action: Action::CloseWindow,
+                repeat: true,
+                cooldown: None,
+                allow_when_locked: false,
+                allow_inhibiting: true,
+                hotkey_overlay_title: None,
+            }],
+        )]));
 
         let comp_mod = CompositorMod::Super;
         let mut suppressed_keys = HashSet::new();
@@ -3707,6 +3772,7 @@ mod tests {
             should_intercept_key(
                 suppr,
                 &bindings,
+                &Submap::Default,
                 comp_mod,
                 close_key_code,
                 close_keysym,
@@ -3724,6 +3790,7 @@ mod tests {
             should_intercept_key(
                 suppr,
                 &bindings,
+                &Submap::Default,
                 comp_mod,
                 Keycode::from(Keysym::l.raw() + 8),
                 Keysym::l,
@@ -3864,72 +3931,76 @@ mod tests {
 
     #[test]
     fn comp_mod_handling() {
-        let bindings = Binds(vec![
-            Bind {
-                key: Key {
-                    trigger: Trigger::Keysym(Keysym::q),
-                    modifiers: Modifiers::COMPOSITOR,
+        let bindings = Binds(HashMap::from([(
+            Submap::Default,
+            vec![
+                Bind {
+                    key: Key {
+                        trigger: Trigger::Keysym(Keysym::q),
+                        modifiers: Modifiers::COMPOSITOR,
+                    },
+                    action: Action::CloseWindow,
+                    repeat: true,
+                    cooldown: None,
+                    allow_when_locked: false,
+                    allow_inhibiting: true,
+                    hotkey_overlay_title: None,
                 },
-                action: Action::CloseWindow,
-                repeat: true,
-                cooldown: None,
-                allow_when_locked: false,
-                allow_inhibiting: true,
-                hotkey_overlay_title: None,
-            },
-            Bind {
-                key: Key {
-                    trigger: Trigger::Keysym(Keysym::h),
-                    modifiers: Modifiers::SUPER,
+                Bind {
+                    key: Key {
+                        trigger: Trigger::Keysym(Keysym::h),
+                        modifiers: Modifiers::SUPER,
+                    },
+                    action: Action::FocusColumnLeft,
+                    repeat: true,
+                    cooldown: None,
+                    allow_when_locked: false,
+                    allow_inhibiting: true,
+                    hotkey_overlay_title: None,
                 },
-                action: Action::FocusColumnLeft,
-                repeat: true,
-                cooldown: None,
-                allow_when_locked: false,
-                allow_inhibiting: true,
-                hotkey_overlay_title: None,
-            },
-            Bind {
-                key: Key {
-                    trigger: Trigger::Keysym(Keysym::j),
-                    modifiers: Modifiers::empty(),
+                Bind {
+                    key: Key {
+                        trigger: Trigger::Keysym(Keysym::j),
+                        modifiers: Modifiers::empty(),
+                    },
+                    action: Action::FocusWindowDown,
+                    repeat: true,
+                    cooldown: None,
+                    allow_when_locked: false,
+                    allow_inhibiting: true,
+                    hotkey_overlay_title: None,
                 },
-                action: Action::FocusWindowDown,
-                repeat: true,
-                cooldown: None,
-                allow_when_locked: false,
-                allow_inhibiting: true,
-                hotkey_overlay_title: None,
-            },
-            Bind {
-                key: Key {
-                    trigger: Trigger::Keysym(Keysym::k),
-                    modifiers: Modifiers::COMPOSITOR | Modifiers::SUPER,
+                Bind {
+                    key: Key {
+                        trigger: Trigger::Keysym(Keysym::k),
+                        modifiers: Modifiers::COMPOSITOR | Modifiers::SUPER,
+                    },
+                    action: Action::FocusWindowUp,
+                    repeat: true,
+                    cooldown: None,
+                    allow_when_locked: false,
+                    allow_inhibiting: true,
+                    hotkey_overlay_title: None,
                 },
-                action: Action::FocusWindowUp,
-                repeat: true,
-                cooldown: None,
-                allow_when_locked: false,
-                allow_inhibiting: true,
-                hotkey_overlay_title: None,
-            },
-            Bind {
-                key: Key {
-                    trigger: Trigger::Keysym(Keysym::l),
-                    modifiers: Modifiers::SUPER | Modifiers::ALT,
+                Bind {
+                    key: Key {
+                        trigger: Trigger::Keysym(Keysym::l),
+                        modifiers: Modifiers::SUPER | Modifiers::ALT,
+                    },
+                    action: Action::FocusColumnRight,
+                    repeat: true,
+                    cooldown: None,
+                    allow_when_locked: false,
+                    allow_inhibiting: true,
+                    hotkey_overlay_title: None,
                 },
-                action: Action::FocusColumnRight,
-                repeat: true,
-                cooldown: None,
-                allow_when_locked: false,
-                allow_inhibiting: true,
-                hotkey_overlay_title: None,
-            },
-        ]);
+            ],
+        )]));
 
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::q),
                 ModifiersState {
@@ -3938,11 +4009,12 @@ mod tests {
                 }
             )
             .as_ref(),
-            Some(&bindings.0[0])
+            Some(&bindings.0[&Submap::Default][0])
         );
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::q),
                 ModifiersState::default(),
@@ -3953,6 +4025,7 @@ mod tests {
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::h),
                 ModifiersState {
@@ -3961,11 +4034,12 @@ mod tests {
                 }
             )
             .as_ref(),
-            Some(&bindings.0[1])
+            Some(&bindings.0[&Submap::Default][1])
         );
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::h),
                 ModifiersState::default(),
@@ -3976,6 +4050,7 @@ mod tests {
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::j),
                 ModifiersState {
@@ -3988,17 +4063,19 @@ mod tests {
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::j),
                 ModifiersState::default(),
             )
             .as_ref(),
-            Some(&bindings.0[2])
+            Some(&bindings.0[&Submap::Default][2])
         );
 
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::k),
                 ModifiersState {
@@ -4007,11 +4084,12 @@ mod tests {
                 }
             )
             .as_ref(),
-            Some(&bindings.0[3])
+            Some(&bindings.0[&Submap::Default][3])
         );
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::k),
                 ModifiersState::default(),
@@ -4022,6 +4100,7 @@ mod tests {
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::l),
                 ModifiersState {
@@ -4031,11 +4110,12 @@ mod tests {
                 }
             )
             .as_ref(),
-            Some(&bindings.0[4])
+            Some(&bindings.0[&Submap::Default][4])
         );
         assert_eq!(
             find_configured_bind(
                 &bindings,
+                &Submap::Default,
                 CompositorMod::Super,
                 Trigger::Keysym(Keysym::l),
                 ModifiersState {
