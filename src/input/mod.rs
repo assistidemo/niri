@@ -882,6 +882,13 @@ impl State {
                 // FIXME: granular
                 self.niri.queue_redraw_all();
             }
+            Action::FocusColumn(index) => {
+                self.niri.layout.focus_column(index);
+                self.maybe_warp_cursor_to_focus();
+                self.niri.layer_shell_on_demand_focus = None;
+                // FIXME: granular
+                self.niri.queue_redraw_all();
+            }
             Action::FocusWindowOrMonitorUp => {
                 if let Some(output) = self.niri.output_up() {
                     if self.niri.layout.focus_window_up_or_output(&output)
@@ -1159,6 +1166,12 @@ impl State {
                     // FIXME: granular
                     self.niri.queue_redraw_all();
                 }
+            }
+            Action::MoveColumnToIndex(idx) => {
+                self.niri.layout.move_column_to_index(idx);
+                self.maybe_warp_cursor_to_focus();
+                // FIXME: granular
+                self.niri.queue_redraw_all();
             }
             Action::FocusWorkspaceDown => {
                 self.niri.layout.switch_workspace_down();

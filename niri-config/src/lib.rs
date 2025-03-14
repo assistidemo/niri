@@ -1486,6 +1486,7 @@ pub enum Action {
     FocusColumnLast,
     FocusColumnRightOrFirst,
     FocusColumnLeftOrLast,
+    FocusColumn(#[knuffel(argument)] usize),
     FocusWindowOrMonitorUp,
     FocusWindowOrMonitorDown,
     FocusColumnOrMonitorLeft,
@@ -1508,6 +1509,7 @@ pub enum Action {
     MoveColumnToLast,
     MoveColumnLeftOrToMonitorLeft,
     MoveColumnRightOrToMonitorRight,
+    MoveColumnToIndex(#[knuffel(argument)] usize),
     MoveWindowDown,
     MoveWindowUp,
     MoveWindowDownOrToWorkspaceDown,
@@ -1682,6 +1684,7 @@ impl From<niri_ipc::Action> for Action {
             niri_ipc::Action::FocusColumnLast {} => Self::FocusColumnLast,
             niri_ipc::Action::FocusColumnRightOrFirst {} => Self::FocusColumnRightOrFirst,
             niri_ipc::Action::FocusColumnLeftOrLast {} => Self::FocusColumnLeftOrLast,
+            niri_ipc::Action::FocusColumn { index } => Self::FocusColumn(index),
             niri_ipc::Action::FocusWindowOrMonitorUp {} => Self::FocusWindowOrMonitorUp,
             niri_ipc::Action::FocusWindowOrMonitorDown {} => Self::FocusWindowOrMonitorDown,
             niri_ipc::Action::FocusColumnOrMonitorLeft {} => Self::FocusColumnOrMonitorLeft,
@@ -1702,6 +1705,7 @@ impl From<niri_ipc::Action> for Action {
             niri_ipc::Action::MoveColumnRight {} => Self::MoveColumnRight,
             niri_ipc::Action::MoveColumnToFirst {} => Self::MoveColumnToFirst,
             niri_ipc::Action::MoveColumnToLast {} => Self::MoveColumnToLast,
+            niri_ipc::Action::MoveColumnToIndex { index } => Self::MoveColumnToIndex(index),
             niri_ipc::Action::MoveColumnLeftOrToMonitorLeft {} => {
                 Self::MoveColumnLeftOrToMonitorLeft
             }
