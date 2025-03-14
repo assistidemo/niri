@@ -218,7 +218,7 @@ jobs:
           show-progress: false
 
       - name: Check flake inputs
-        uses: DeterminateSystems/flake-checker-action@v4
+        uses: DeterminateSystems/flake-checker-action@v9
         continue-on-error: true
 
       - name: Install Nix
